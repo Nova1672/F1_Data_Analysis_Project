@@ -2,9 +2,21 @@
 
 This file is a simple summary of where we are right now in the project. The goal is to make it easy to understand what has already been done and what is coming next.
 
+## Latest update (2026-10-07)
+
+The project documentation has been reviewed and aligned with the confirmed working dataset for this analysis.
+
+- Reference race: 2025 China Grand Prix in Shanghai
+- Session key: 9998
+- Sample driver: driver 44, Lewis Hamilton
+- Core join key confirmed: timestamp + driver_number
+- Current doc state: the notebook exploration and raw data files are consistent with the China GP session, so the project notes are now aligned to that source
+
+This update keeps the project record consistent with the actual race data being used for exploration and analysis.
+
 ## 1) We have chosen the race and the starting data
 
-We started with the 2025 Australian Grand Prix in Melbourne.
+We started with the 2025 China Grand Prix in Shanghai.
 
 - Race/session key: 9998
 - Sample driver used for testing: Lewis Hamilton, driver number 44
@@ -46,7 +58,7 @@ This is the foundation for building a proper replay or analysis engine.
 
 ## 4) We have reviewed the main data structure
 
-We have already created and reviewed documentation for the data set, including:
+We have already created and reviewed documentation for the dataset, including:
 
 - a data dictionary explaining each table
 - a list of the main fields in each dataset
@@ -85,7 +97,7 @@ What is done:
 - data tables were identified
 - synchronization strategy was found
 - initial analysis was done on a real driver sample
-- documentation is being created to explain the project clearly
+- documentation and project notes were reviewed and aligned with the confirmed session
 
 What is still ahead:
 
