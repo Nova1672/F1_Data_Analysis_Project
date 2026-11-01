@@ -1,121 +1,135 @@
 # Project Progress
 
-This file is a simple summary of where we are right now in the project. The goal is to make it easy to understand what has already been done and what is coming next.
+This document explains in simple language what is in place and what still needs
+to be done for the F1 Race Intelligence / Virtual Pit Wall project.
 
-## Latest update (2026-10-07)
+## Latest update — 2026-11-01
 
-The project documentation has been reviewed and aligned with the confirmed working dataset for this analysis.
+Milestones 2.3A and 2.3B are complete. The project can discover OpenF1 sessions,
+request individual datasets for a selected session, and validate and normalize
+the returned records without changing their dataset-specific shape.
 
-- Reference race: 2025 China Grand Prix in Shanghai
-- Session key: 9998
-- Sample driver: driver 44, Lewis Hamilton
-- Core join key confirmed: timestamp + driver_number
-- Current doc state: the notebook exploration and raw data files are consistent with the China GP session, so the project notes are now aligned to that source
+## Project data
 
-This update keeps the project record consistent with the actual race data being used for exploration and analysis.
+The current reference event is the 2025 Chinese Grand Prix in Shanghai:
 
-## 1) We have chosen the race and the starting data
+- Session key: `9998`
+- Sample driver: Lewis Hamilton, driver number `44`
 
-We started with the 2025 China Grand Prix in Shanghai.
+The saved raw data includes drivers, laps, positions, intervals, stints, pit
+stops, race-control messages, weather, car telemetry, and approximate car
+locations. The data dictionary describes the main fields and how these datasets
+are used.
 
-- Race/session key: 9998
-- Sample driver used for testing: Lewis Hamilton, driver number 44
+Each dataset keeps its own purpose and structure. For example, a weather
+observation is not a driver observation, and telemetry and location are
+high-frequency samples rather than one summary per driver.
 
-This gives us a single real race event to work from, instead of jumping between many races.
+## What has been built
 
-## 2) We have looked at the available data
+### OpenF1 access and session discovery
 
-The project contains raw race data in different tables. We have identified the main groups of information:
+- `src/openf1/client.py` provides the shared HTTP client for OpenF1.
+- It returns lists of JSON records and raises specific errors for request,
+  connection, HTTP, timeout, and response problems.
+- `src/openf1/session_service.py` discovers available seasons, meetings,
+  sessions, and session drivers.
+- `src/openf1/session_data_service.py` retrieves one chosen dataset for a
+  selected session. It supports the ten datasets listed below, optional driver
+  filtering, and additional OpenF1 query parameters.
+- The selected `session_key` is always used, even if an additional filter tries
+  to provide a different one.
+- High-frequency `car_data` and `location` are requested individually. They
+  are not automatically fetched for every driver.
 
-- Race positions
-- Lap timings
-- Intervals and gaps
-- Pit stop data
-- Tyre and stint data
-- Race control messages
-- Weather information
-- Car telemetry such as speed, throttle, brake, gear, RPM, and DRS
-- Approximate location data for car position on track
+Supported dataset endpoints:
 
-This tells us that the dataset is rich enough to build a race replay, strategy analysis, and performance insights.
+- `drivers`
+- `laps`
+- `position`
+- `intervals`
+- `stints`
+- `pit`
+- `race_control`
+- `weather`
+- `car_data`
+- `location`
 
-## 3) We have identified the key linking field
+### Dataset validation and timestamp handling
 
-One of the most important discoveries so far is that the datasets can be connected using:
+`src/data/session_dataset.py` provides
+`process_session_dataset(dataset, records, session_key)`.
 
-- timestamp
-- driver_number
+- It checks the selected session key and reports when a returned record has a
+  missing, invalid, or different session key.
+- It uses explicit timestamp fields for each dataset. Laps use `date_start`;
+  position, intervals, pit, race control, weather, car data, and location use
+  `date`. Drivers and stints have no timestamp field in this processing step.
+- Valid timezone-aware timestamps are converted to UTC while preserving the
+  actual instant.
+- Missing and null timestamps stay missing.
+- Malformed timestamps stay in the returned records and are reported.
+- Timezone-naive timestamps are kept as they are and reported as ambiguous;
+  the processor does not guess their timezone.
+- Issues include the dataset, record index, field, original value, code,
+  severity, and a message.
+- Errors make the result invalid. Warnings alone do not.
 
-This is a very important step because it means we can combine information from different tables and line them up correctly.
+The processor preserves record count and order, nested data, dataset-specific
+fields, missing values, and meaningful numeric zeros. It does not discard
+records, aggregate, deduplicate, resample, or flatten values.
 
-Example:
+### Existing data tools
 
-- a lap dataset can be matched with telemetry
-- race position can be matched with tire information
-- weather and track conditions can be linked to the same time
+- `src/data/loader.py` loads the saved raw CSV files and normalizes columns that
+  look like timestamps. Its existing conversion uses pandas and can turn
+  malformed timestamps into missing datetime values; the new session dataset
+  processor reports malformed values without changing the source record.
+- `src/race_engine/synchronization.py` provides helpers to select the nearest
+  observation or the latest observation before a target time. It skips rows
+  whose timestamp is missing.
+- The API client, session discovery service, CSV loader, and race engine were
+  not changed as part of milestones 2.3A or 2.3B.
 
-This is the foundation for building a proper replay or analysis engine.
+## Tests and checks
 
-## 4) We have reviewed the main data structure
+Tests use mocked API clients or in-memory records, so they do not require a live
+OpenF1 connection. Coverage includes:
 
-We have already created and reviewed documentation for the dataset, including:
+- OpenF1 request parameters and client errors.
+- Session and dataset retrieval, including all ten endpoints.
+- Invalid and overridden session keys, driver filters, empty results, and
+  propagated API exceptions.
+- Timestamp conversion, timezone offsets, missing and malformed timestamps,
+  and timezone-naive timestamps.
+- Session-key matches, mismatches, missing values, and malformed values.
+- Preservation of record order, nested sector data, missing telemetry, zeros,
+  and high-frequency observations.
+- Existing CSV loader and race synchronization behavior.
 
-- a data dictionary explaining each table
-- a list of the main fields in each dataset
-- notes about the limitations of the data
-- phase 1 findings showing what we learned during the first exploration
+The last full test run completed with **99 passed**. Python syntax checks passed
+for the new processing module and its tests, and `git diff --check` reported no
+whitespace errors.
 
-This means we are not just dumping raw files into the project. We are understanding what each file means and how it will be used.
+## Current status
 
-## 5) We have tested the idea with a real driver sample
+The project has working building blocks for retrieving session data and
+checking records before they are used. The existing CSV loader and race engine
+remain separate; the new session-data processor does not automatically feed
+either one.
 
-We checked a real sample from driver 44 (Lewis Hamilton) and confirmed that the dataset contains useful values like:
+## Remaining work
 
-- lap number
-- lap time
-- position
-- gap to leader
-- tyre compound
-- speed
-- throttle
-- brake
-- gear
-- RPM
-- DRS status
+The next work should be chosen based on project priorities. Possible next steps
+include:
 
-This confirms that the data is usable for deeper analysis and not just raw logs.
+- Decide how the new processor should be used by later data workflows.
+- Add further transformation or analysis steps when their requirements are
+  defined.
+- Build replay, strategy-analysis, or dashboard features when they are in
+  scope.
+- Continue documenting limitations and verify assumptions against the OpenF1
+  endpoint documentation as its data contracts become clearer.
 
-## 6) Current status
-
-At this point, the project is in the Phase 1 discovery and understanding stage.
-
-What is done:
-
-- project folder and data structure are in place
-- raw race files are available
-- key race event and sample driver were chosen
-- data tables were identified
-- synchronization strategy was found
-- initial analysis was done on a real driver sample
-- documentation and project notes were reviewed and aligned with the confirmed session
-
-What is still ahead:
-
-- cleaning and validating the raw data
-- preparing a consistent merged dataset
-- building transformation scripts
-- creating analysis notebooks or pipelines
-- building the replay or dashboard features
-- final insights and reporting
-
-## 7) Simple project summary
-
-So far, we have reached the point where we understand the problem and the data. We know what files exist, what each table contains, and how to connect the information together. That is an important milestone.
-
-The project is not finished yet, but the foundation is strong and the next step is to clean and combine the data into a usable format.
-
-## 8) Next milestone
-
-The next big goal is to turn the raw race files into a cleaned, merged dataset that can be analyzed consistently across laps, drivers, and race events.
-
-Once that is done, the project can move into deeper analysis and visualization.
+No caching, pagination, API routes, frontend work, or race-state reconstruction
+has been added in these milestones.
